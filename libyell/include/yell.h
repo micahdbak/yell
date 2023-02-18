@@ -1,0 +1,3 @@
+/* libyell */
+
+int yell(void);
