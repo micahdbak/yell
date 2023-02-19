@@ -1,7 +1,10 @@
 CC      := gcc
+# MacOS
 CFLAGS  := -I'../libyell/include' -pthread
-LIBS    := -lncurses
-LIBYELL := '../libyell/lib/yell.a'
+LIBS    := ../libyell/lib/libyell.a -lncurses
+# Linux
+# CFLAGS  := -I'../libyell/include' -L'../libyell/lib' -pthread
+# LIBS    := -llibyell -lncurses
 
 SRC = ./src
 OBJ = ./obj
@@ -13,7 +16,7 @@ $(OBJ)/%.o: $(SRC)/%.c
 
 whisper: $(OBJ)/main.o $(OBJ)/whisper.o
 	mkdir -p $(BIN)
-	$(CC) $(CFLAGS) -o $(BIN)/whisper $(LIBYELL) $^ $(LIBS)
+	$(CC) $(CFLAGS) -o $(BIN)/whisper $^ $(LIBS)
 
 .PHONY: clean
 clean:

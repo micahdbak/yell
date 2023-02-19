@@ -31,8 +31,8 @@ void read_input(WINDOW *window, char *dst, char *description) {
 		if (ch == KEY_BACKSPACE || ch == KEY_DL) {
 			i -= 2;
 
-			if (i < 0)
-				i = 0;
+			if (i < -1)
+				i = -1;
 		} else
 		if (isprint(ch))
 			buf[i] = ch;

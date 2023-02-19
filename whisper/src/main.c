@@ -6,7 +6,7 @@
 
 #include "whisper.h"
 
-#define FRAMES_PER_SEC  (1.0 / 30.0)
+#define FRAMES_PER_SEC  (1.0 / 15.0)
 
 FILE *logfile;
 
@@ -83,6 +83,8 @@ int main(void) {
 	game = true;
 	last = 0;
 
+	clear();
+
 	// game loop
 	while (game) {
 		// parse yell events
@@ -136,10 +138,10 @@ int main(void) {
 
 		last = current;
 
-		fprintf(stderr, "GOT HERE.\n");
-
-		clear();
 		move(0, 0);
+
+		if (getmaxy(stdscr) != height || getmaxx(stdscr) != width)
+			clear();
 
 		height = getmaxy(stdscr);
 		width = getmaxx(stdscr);

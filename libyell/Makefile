@@ -8,10 +8,10 @@ $(OBJ)/%.o: $(INCLUDE)/%.c
 	mkdir -p $(OBJ)
 	$(CC) -c -o $@ $<
 
-.PHONY: yell
-yell: $(OBJ)/yell.o
+.PHONY: libyell
+libyell: $(OBJ)/yell.o
 	mkdir -p $(LIB)
-	ar -cvq $(LIB)/yell.a $(OBJ)/yell.o
+	ar -cvq $(LIB)/libyell.a $(OBJ)/yell.o
 
 .PHONY: clean
 clean:

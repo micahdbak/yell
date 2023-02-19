@@ -308,6 +308,7 @@ void yell_debug(yellself_t *self, FILE *dst) {
 }
 
 yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *message) {
+	char buf[BUFFER_SIZE];
 	int bytes;
 
 	node->fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -325,8 +326,8 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 		return NULL;
 	}
 
-	bzero(node->event.buf, BUFFER_SIZE);
-	bytes = read(node->fd, node->event.buf, BUFFER_SIZE);
+	bzero(buf, BUFFER_SIZE);
+	bytes = read(node->fd, buf, BUFFER_SIZE);
 
 	if (bytes < 0) {
 		perror("yell_private(): read()");
@@ -334,6 +335,7 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 		return NULL;
 	}
 
+	/*
 	node->event.buf[bytes] = '\0';
 	node->event.type = YELLEVENT_MESSAGE;
 
@@ -341,6 +343,8 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 		node->event.type += YELLEVENT_OK;
 
 	return &node->event;
+	*/
+	return NULL;
 }
 
 int yell(yellself_t *self, const char *message) {
