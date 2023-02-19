@@ -15,5 +15,5 @@ yell: $(OBJ)/yell.o
 
 .PHONY: clean
 clean:
-	rm -r obj
-	rm -r lib
+	rm -r obj || true
+	rm -r lib || true
