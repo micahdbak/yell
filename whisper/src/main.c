@@ -1,101 +1,133 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <time.h>
+#include <ctype.h>
 
-#include "yell.h"
 #include "whisper.h"
 
-// run at thirty frames per second
 #define FRAMES_PER_SEC  (1.0 / 30.0)
 
-#define MAP_H  32
-#define MAP_W  64
+FILE *logfile;
 
-char *default_art = 
-	"O_O\n"
-	"/|\\\n"
-	"/ \\\n";
+void print_log(void) {
+	int c;
 
-char *tree_art =
-	".oOOo.\n"
-	"oOOOOo\n"
-	"OOOOOO\n"
-	"oOOOOo\n"
-	"'OOOO'\n"
-	"  ||  \n";
+	fseek(logfile, 0, SEEK_SET);
+
+	c = getc(logfile);
+
+	for (; c != EOF; c = getc(logfile))
+		putc(c, stdout);
+
+	fclose(logfile);
+}
 
 int main(void) {
 	int game,
 	    ch,
 	    height, width,
-	    y, x,
-	    i, j;
+	    c, i, j,
+	    y_new, x_new;
 	clock_t last, current;
-	double seconds,
-	       delta;
 	WINDOW *map_window;
-	yell_t yell;
-	yevent_t event;
-
-	sprite_t sprite[4];
-	sprite_t tree;
+	yellself_t self;
+	event_t *event_v;
 	map_t map;
+	char msg[BUFFER_SIZE], buf[BUFFER_SIZE],
+	     name[NAME_SIZE], speaker[NAME_SIZE];
+	struct player_node *pnode;
+	player_t *node_player;
+	yellnode_t *node;
 
-	tree.art = tree_art;
-	tree.h = 6;
-	tree.x = 32;
-	tree.y = 16;
+	// initialize yell
 
-	srand(time(0));
+	atexit(print_log);
+	logfile = tmpfile();
 
-	for (i = 0; i < 4; ++i) {
-		sprite[i].art = default_art;
-		sprite[i].h = 3;
-		sprite[i].y = 4 + rand() % (MAP_H - 8);
-		sprite[i].x = 4 + rand() % (MAP_W - 8);
-	}
+	fprintf(logfile, "Whisper started.\n");
 
-	map.sprite_ll = NULL;
+	// initialize ncurses
 
 	initscr();
 	cbreak();
 	keypad(stdscr, TRUE);
-	noecho();
-	nodelay(stdscr, TRUE);
-
+	
 	if (has_colors() == FALSE) {
 		fprintf(stderr, "Terminal does not support colors.\n");
 
 		exit(EXIT_FAILURE);
 	}
 
-	yell_connect(&yell);
+	echo();
+	nodelay(stdscr, FALSE);
 
-	getmaxyx(stdscr, height, width);
-	map_window = newwin(MAP_H, MAP_W, (height - MAP_H) / 2, (width - MAP_W) / 2);
-	wborder(map_window, '*', '*', '*', '*', '*', '*', '*', '*');
+	read_input(stdscr, name, "Choose a display name:");
+
+	// initialize yell
+
+	yell_init(&self, name);
+	yell_debug(&self, logfile);
+
+	noecho();
+	nodelay(stdscr, TRUE);
+
+	//start_color();
+	//init_pair(1, COLOR_WHITE, COLOR_BLUE);
+
+	player_create(&map.player, "O_O", NULL, 8, 8);
+
+	map.player_ll = NULL;
+	map.sprite_ll = NULL;
 
 	game = true;
-	last = clock();
-
-	y = 8;
-	x = 8;
-
-	j = 0;
+	last = 0;
 
 	// game loop
 	while (game) {
 		// parse yell events
-		while (yell_event(&yell, &event))
-			switch (event.type) {
-			case YEVENT_MESSAGE:
+		for (; (event_v = yell_nextevent(&self)) != NULL; yell_freeevent(event_v)) {
+			i = 0;
 
-				break;
-			default:
+			if (event_v->event->buf[i] == '(') {
+				++i;
 
-				break;
+				for (j = 0; event_v->event->buf[i] != ')'; ++j, ++i) {
+					speaker[j] = event_v->event->buf[i];
+				}
+
+				// skip the space that follows a name
+				i += 2;
+
+				speaker[j] = '\0';
+			} else {
+				fprintf(logfile, "Strange packet received.\n");
+
+				continue;
 			}
+
+			node = yell_node(&self, speaker);
+
+			if (node == NULL) {
+				fprintf(logfile, "Invalid speaker: %s\n", speaker);
+
+				continue;
+			}
+
+			if (event_v->event->buf[i] == '(') {
+				++i;
+
+				sscanf(&event_v->event->buf[i], "%d,%d", &y_new, &x_new);
+
+				node_player = player_node(&map, node);
+				player_move(node_player, y_new, x_new);
+
+				continue;
+			}
+
+			strcpy(node->event.buf, event_v->event->buf);
+			node->event.type = event_v->event->type;
+		}
 
 		current = clock();
 
@@ -104,19 +136,20 @@ int main(void) {
 
 		last = current;
 
+		fprintf(stderr, "GOT HERE.\n");
+
 		clear();
 		move(0, 0);
 
 		height = getmaxy(stdscr);
 		width = getmaxx(stdscr);
-
 #ifdef DEBUG
 		printw("%d, %d\n", height, width);
 #endif
 
 		delwin(map_window);
 		map_window = newwin(MAP_H, MAP_W, (height - MAP_H) / 2, (width - MAP_W) / 2);
-		wborder(map_window, '*', '*', '*', '*', '*', '*', '*', '*');
+		box(map_window, 0, 0);
 
 		if (height <= MAP_H || width <= MAP_W) {
 			move(height / 2, (width / 2) - 13);
@@ -140,62 +173,68 @@ int main(void) {
 #endif
 
 			switch (ch) {
-			case KEY_RIGHT:
-				sprite[j].x++;
-
-				break;
-			case KEY_LEFT:
-				sprite[j].x--;
-
-				break;
-			case KEY_UP:
-				sprite[j].y--;
-
-				break;
-			case KEY_DOWN:
-				sprite[j].y++;
-
-				break;
-			case 'w':
-				if (j == 0)
-					j = 3;
-				else
-					--j;
-
-				break;
-			case 'e':
-				if (j == 3)
-					j = 0;
-				else
-					++j;
-
-				break;
 			case 'q':
 				game = false;
 
 				break;
+			case 'y':
+				echo();
+				nodelay(stdscr, FALSE);
+
+				read_input(stdscr, msg, "What will you yell?");
+
+				sprintf(buf, "(%s) ", self.name);
+				strcat(buf, msg);
+
+				yell(&self, buf);
+
+				noecho();
+				nodelay(stdscr, TRUE);
+
+				break;
+			case 'c':
+				echo();
+				nodelay(stdscr, FALSE);
+
+				add_peer(&self, &map, stdscr);
+
+				noecho();
+				nodelay(stdscr, TRUE);
+
+				break;
 			default:
+				if (player_ctrl(&map.player, ch)) {
+					sprintf(buf, "(%s) (%d,%d)", self.name, map.player.sprite.y, map.player.sprite.x);
+					yell(&self, buf);
+				}
 
 				break;
 			}
 		}
 
-		for (i = 0; i < 4; ++i)
-			push_sprite(&map, &sprite[i]);
+		player_update(&map.player);
+		push_sprite(&map, &map.player.sprite);
 
-		push_sprite(&map, &tree);
+		for (pnode = map.player_ll; pnode != NULL; pnode = pnode->next) {
+			player_update(pnode->player);
+			push_sprite(&map, &pnode->player->sprite);
+		}
 
 		print_sprites(map_window, &map);
 
-		move(0,0);
+		move(height - 1,0);
+		printw("Listening on port %d. Unique node name is %s.\n", self.port, self.name);
 
 		wrefresh(map_window);
 		refresh();
-		free_sprites(&map);
+
+		empty_sprites(&map);
 	}
+
+	yell_exit(&self);
 
 	clear();
 	endwin();
 
-	return 0;
+	exit(EXIT_SUCCESS);
 }
