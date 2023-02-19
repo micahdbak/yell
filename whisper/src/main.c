@@ -189,6 +189,7 @@ int main(void) {
 				strcat(buf, msg);
 
 				yell(&self, buf);
+				strcpy(map.player.message, buf);
 
 				noecho();
 				nodelay(stdscr, TRUE);

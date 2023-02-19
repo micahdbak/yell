@@ -28,7 +28,7 @@ typedef struct yellevent {
 
 typedef struct yellnode {
 	char name[NAME_SIZE];
-	int fd;
+	int fd, kill;
 	struct sockaddr_in addr;
 	yellevent_t event;
 } yellnode_t;
@@ -43,12 +43,14 @@ typedef struct yellevent_verbose {
 } event_t;
 
 typedef struct yellself {
+	FILE *logfile;
 	char name[NAME_SIZE];
 	int fd, port,
 	    close;
 	struct sockaddr_in addr;
 	pthread_t thread;
-	pthread_mutex_t close_mutex, events_mutex;
+	pthread_mutex_t close_mutex,
+			nodes_mutex, events_mutex;
 	struct yellnode_ll {
 		yellnode_t *node;
 		struct yellnode_ll *next;
@@ -69,6 +71,9 @@ yellnode_t *yell_node(yellself_t *self, const char *name);
 
 // print information about self and connected nodes
 void yell_debug(yellself_t *self, FILE *dst);
+
+// print yell logs to file
+void yell_log(yellself_t *self, FILE *dst);
 
 // yell a message to a specific node
 yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *message);

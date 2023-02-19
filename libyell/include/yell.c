@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "yell.h"
 
@@ -14,16 +16,22 @@
 #define PING_MESSAGE  "What is your name?"
 #define OK_MESSAGE    "OK"
 
+#define perr(STR)\
+	fprintf(self->logfile, STR ": %s\n", strerror(errno));
+
 void *yell_recv(void *self_ptr);
+void yell_cut(yellself_t *self, yellnode_t *node);
 
 int yell_init(yellself_t *self, const char *name) {
 	int sockopt;
+
+	self->logfile = tmpfile();
 
 	strcpy(self->name, name);
 	self->fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (self->fd < 0) {
-		perror("yell_init(): socket()");
+		perr("yell_init(): socket()");
 
 		return YELL_FAILURE;
 	}
@@ -32,7 +40,7 @@ int yell_init(yellself_t *self, const char *name) {
 	sockopt = 1;
 
 	if (setsockopt(self->fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&sockopt, sizeof(int)) < 0) {
-		perror("yell_init(): setsockopt()");
+		perr("yell_init(): setsockopt()");
 
 		return YELL_FAILURE;
 	}
@@ -47,14 +55,14 @@ int yell_init(yellself_t *self, const char *name) {
 
 		if (bind(self->fd, (struct sockaddr *)&self->addr,
 		                   sizeof(struct sockaddr_in)) < 0) {
-			perror("yell_init(): bind()");
+			perr("yell_init(): bind()");
 			fprintf(stderr, "yell_init(): bind(): Port was %d.\n", self->port);
 		} else
 			break;
 	}
 
 	if (listen(self->fd, MAX_CONNECTIONS) < 0) {
-		perror("yell_init(): listen()");
+		perr("yell_init(): listen()");
 
 		return YELL_FAILURE;
 	}
@@ -68,6 +76,8 @@ int yell_init(yellself_t *self, const char *name) {
 	self->events.tail = NULL;
 	pthread_mutex_init(&self->events_mutex, NULL);
 
+	pthread_mutex_init(&self->nodes_mutex, NULL);
+
 	pthread_create(&self->thread, NULL, yell_recv, (void *)self);
 
 	return YELL_SUCCESS;
@@ -80,7 +90,7 @@ int yell_push_event(yellself_t *self, yellevent_t *event) {
 		self->events.head = (eventnode_t *)malloc(sizeof(eventnode_t));
 
 		if (self->events.head == NULL) {
-			perror("yell_push_event(): malloc()");
+			perr("yell_push_event(): malloc()");
 
 			return YELL_FAILURE;
 		}
@@ -92,7 +102,7 @@ int yell_push_event(yellself_t *self, yellevent_t *event) {
 		self->events.tail->next = (eventnode_t *)malloc(sizeof(eventnode_t));
 
 		if (self->events.tail->next == NULL) {
-			perror("yell_push_event(): malloc()");
+			perr("yell_push_event(): malloc()");
 
 			return YELL_FAILURE;
 		}
@@ -111,6 +121,8 @@ void *yell_recv(void *self_ptr) {
 	socklen_t len;
 	char buf[BUFFER_SIZE], name[NAME_SIZE];
 	yellevent_t *event;
+	struct yellnode_ll *march;
+	yellnode_t *tokill;
 
 	len = sizeof(struct sockaddr_in);
 
@@ -123,11 +135,22 @@ void *yell_recv(void *self_ptr) {
 
 		pthread_mutex_unlock(&self->close_mutex);
 
+		pthread_mutex_lock(&self->nodes_mutex);
+
+		for (march = self->nodes; march != NULL; march = march->next)
+			if (march->node->kill) {
+				tokill = march->node;
+				yell_cut(self, tokill);
+				free(tokill);
+			}
+
+		pthread_mutex_unlock(&self->nodes_mutex);
+
 		node_fd =
 		accept(self->fd, (struct sockaddr *)&self->addr, &len);
 
 		if (node_fd < 0) {
-			perror("yell_recv(): accept()");
+			perr("yell_recv(): accept()");
 
 			break;
 		}
@@ -136,7 +159,7 @@ void *yell_recv(void *self_ptr) {
 		bytes = read(node_fd, buf, BUFFER_SIZE);
 
 		if (bytes < 0) {
-			perror("yell_recv(): read()");
+			perr("yell_recv(): read()");
 
 			break;
 		}
@@ -146,7 +169,7 @@ void *yell_recv(void *self_ptr) {
 		event = (yellevent_t *)malloc(sizeof(yellevent_t));
 
 		if (event == NULL) {
-			perror("yell_recv(): malloc()");
+			perr("yell_recv(): malloc()");
 
 			close(node_fd);
 
@@ -171,7 +194,7 @@ void *yell_recv(void *self_ptr) {
 		pthread_mutex_unlock(&self->events_mutex);
 
 		if (push_r == YELL_FAILURE) {
-			perror("yell_recv(): yell_push_event()");
+			perr("yell_recv(): yell_push_event()");
 
 			free(event);
 			close(node_fd);
@@ -195,9 +218,10 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	char buf[BUFFER_SIZE];
 
 	node = (yellnode_t *)malloc(sizeof(yellnode_t));
+	node->kill = 0;
 
 	if (node == NULL) {
-		perror("yell_add(): malloc()");
+		perr("yell_add(): malloc()");
 
 		return NULL;
 	}
@@ -205,7 +229,7 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	node->fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (node->fd == -1) {
-		perror("yell_add(): socket()");
+		perr("yell_add(): socket()");
 
 		return NULL;
 	}
@@ -214,7 +238,7 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	sockopt = 1;
 
 	if (setsockopt(node->fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&sockopt, sizeof(int)) < 0) {
-		perror("yell_add(): setsockopt()");
+		perr("yell_add(): setsockopt()");
 
 		return NULL;
 	}
@@ -227,7 +251,7 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 
 	if (connect(node->fd, (struct sockaddr *)&node->addr,
 	                      sizeof(struct sockaddr_in)) < 0) {
-		fprintf(stderr, "yell_add(): Could not connect to node at %s over port %d.\n", addr, port);
+		fprintf(self->logfile, "yell_add(): Could not connect to node at %s over port %d.\n", addr, port);
 
 		return NULL;
 	}
@@ -235,7 +259,7 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	strcpy(buf, PING_MESSAGE);
 
 	if (write(node->fd, buf, strlen(buf)) < 0) {
-		perror("yell_add(): send()");
+		perr("yell_add(): send()");
 
 		return NULL;
 	}
@@ -244,7 +268,7 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	bytes = read(node->fd, buf, BUFFER_SIZE);
 
 	if (bytes < 0) {
-		perror("yell_add(): read()");
+		perr("yell_add(): read()");
 
 		return NULL;
 	}
@@ -258,23 +282,31 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	bzero(node->event.buf, BUFFER_SIZE);
 	node->event.type = YELLEVENT_MESSAGE;
 
+	pthread_mutex_lock(&self->nodes_mutex);
+
 	if (self->nodes == NULL) {
 		self->nodes = (struct yellnode_ll *)malloc(sizeof(struct yellnode_ll));
 		self->nodes->node = node;
 		self->nodes->next = NULL;
+
+		pthread_mutex_unlock(&self->nodes_mutex);
 
 		return node;
 	}
 
 	for (march = self->nodes; march->next != NULL; march = march->next)
 		if (strcmp(march->node->name, node->name) == 0) {
-			perror("yell_add(): Node name already exists.");
+			perr("yell_add(): Node name already exists.");
+
+			pthread_mutex_unlock(&self->nodes_mutex);
 
 			return NULL;
 		}
 
 	if (strcmp(march->node->name, node->name) == 0) {
-		perror("yell_add(): Node name already exists.");
+		perr("yell_add(): Node name already exists.");
+
+		pthread_mutex_unlock(&self->nodes_mutex);
 
 		return NULL;
 	}
@@ -284,7 +316,32 @@ yellnode_t *yell_add(yellself_t *self, const char *addr, int port) {
 	march->node = node;
 	march->next = NULL;
 
+	pthread_mutex_unlock(&self->nodes_mutex);
+
 	return node;
+}
+
+void yell_cut(yellself_t *self, yellnode_t *node) {
+	struct yellnode_ll *march, *ret;
+
+	if (self->nodes->node == node) {
+		ret = self->nodes;
+		self->nodes = ret->next;
+
+		free(ret);
+
+		return;
+	}
+
+	for (march = self->nodes; march != NULL && march->next != NULL; march = march->next)
+		if (march->next->node == node) {
+			ret = march->next;
+			march->next = ret->next;
+
+			free(ret);
+
+			break;
+		}
 }
 
 yellnode_t *yell_node(yellself_t *self, const char *name) {
@@ -307,6 +364,17 @@ void yell_debug(yellself_t *self, FILE *dst) {
 			addr, ntohs(self->addr.sin_port));
 }
 
+void yell_log(yellself_t *self, FILE *dst) {
+	int c;
+
+	fseek(self->logfile, 0, SEEK_SET);
+
+	c = getc(self->logfile);
+
+	for (; c != EOF; c = getc(self->logfile))
+		putc(c, dst);
+}
+
 yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *message) {
 	char buf[BUFFER_SIZE];
 	int bytes;
@@ -316,12 +384,14 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 	if (connect(node->fd, (struct sockaddr *)&node->addr,
 	                      sizeof(struct sockaddr_in)) < 0) {
 		fprintf(stderr, "yell_private(): connect(): Could not message node.\n");
+		node->kill = 1;
 
 		return NULL;
 	}
 
 	if (write(node->fd, message, strlen(message)) < 0) {
-		perror("yell_private(): write()");
+		perr("yell_private(): write()");
+		node->kill = 1;
 
 		return NULL;
 	}
@@ -330,7 +400,8 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 	bytes = read(node->fd, buf, BUFFER_SIZE);
 
 	if (bytes < 0) {
-		perror("yell_private(): read()");
+		perr("yell_private(): read()");
+		node->kill = 1;
 
 		return NULL;
 	}
@@ -350,8 +421,12 @@ yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *messag
 int yell(yellself_t *self, const char *message) {
 	struct yellnode_ll *node;
 
+	pthread_mutex_lock(&self->nodes_mutex);
+
 	for (node = self->nodes; node != NULL; node = node->next)
 		yell_private(self, node->node, message);
+
+	pthread_mutex_unlock(&self->nodes_mutex);
 
 	return YELL_SUCCESS;
 }

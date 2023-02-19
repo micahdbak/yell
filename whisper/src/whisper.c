@@ -181,6 +181,7 @@ void player_create(player_t *player, char face[4], yellnode_t *node, int y, int 
 	player->sprite.y_shift = 2;
 	player->sprite.x_shift = 1;
 	player->node = node;
+	player->message[0] = '\0';
 }
 
 int player_ctrl(player_t *player, int ch) {
@@ -209,6 +210,8 @@ void player_update(player_t *player) {
 
 	if (player->node != NULL)
 		strcat(player->sprite.art, player->node->event.buf);
+	else
+		strcat(player->sprite.art, player->message);
 
 	strcat(player->sprite.art, default_art);
 }
