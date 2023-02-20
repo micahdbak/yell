@@ -1,10 +1,6 @@
-CC      := gcc
-# MacOS
-CFLAGS  := -I'../libyell/include' -pthread
-LIBS    := ../libyell/lib/libyell.a -lncurses
-# Linux
-# CFLAGS  := -I'../libyell/include' -L'../libyell/lib' -pthread
-# LIBS    := -llibyell -lncurses
+CC      := clang
+CFLAGS  := -I'../libyell/include'
+LIBS    := ../libyell/lib/libyell.a -lncurses -pthread
 
 SRC = ./src
 OBJ = ./obj

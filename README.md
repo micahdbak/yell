@@ -8,7 +8,7 @@ Whisper, a simple game created as an example of the yell peer-to-peer (p2p) netw
 was created as a submission to the mountain madness 2023 hackathon.
 This hackathon is organized by the <a href="https://sfucsss.org">CSSS</a> at <a href="https://sfu.ca">SFU</a>.
 
-# Lost in Translation
+## Lost in Translation
 
 The theme for this hackathon is 'lost in translation'.
 There are several ways to interpret this theme,
@@ -21,36 +21,36 @@ Additionally, the communication aspects of my game
 permit users to become 'lost in translation'
 through word-games, such as telephone, or others.
 
-# Installation
+## Installation
 
 It is recommended that players compile and use this software under a UNIX system.
+`libyell` and `whisper` are compiled with the Clang compiler,
+so this must be installed as well as dependencies.
+To prepare `libyell` and compile `whisper`,
+you must ensure that you have access to the `pthreads`
+(POSIX multithreading) and `ncurses` development libraries.
+The installation of these vary from platform to platform.
+The `pthreads` library comes by default with Linux and MacOS.
 
-To compile `whisper`, you must compile the yell library.
+Enter the following with respect to your operating system, as a super user (using `sudo`, if necessary):
 
-To do so, you must ensure that you have access to the `pthreads`
-(POSIX multithreading library) and `ncurses` C development libraries.
+Debian-based distributions (e.g., Ubuntu):  ```apt install clang libncurses-dev```
+Arch-based distributions (e.g., Manjaro):   ```pacman -S clang ncurses```
+MacOS, with <a href="https://brew.sh/">HomeBrew</a>:    ```brew install ncurses```  (MacOS' default C compiler is Clang.)
 
-The installation of this varies from platform to platform,
-but is likely to be installed by default, for example,
-in the case of MacOS and several Linux distributions.
-
-When these dependencies are resolved, `cd` into `libyell`, and run:
+When these dependencies are installed, `cd` into `libyell`, and run:
 
 ```make clean libyell```
 
 The static library file `libyell.a` will now be in `libyell/lib/libyell.a`.
-
 From here, you must compile `whisper`.
-
 To do this, `cd` into the repositories root directory, then `cd` into `whisper`.
-
-Ensure that the dependencies are installed, namely `ncurses`, then run:
+Run:
 
 ```make clean whisper```
 
 The binary file `whisper` will now be in `whisper/bin/whisper`.
-
-And now whisper is installed. Run the binary file `whisper` to play the game.
+Run the binary file `whisper` to play the game.
 
 # Technology
 
