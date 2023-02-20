@@ -5,7 +5,7 @@ Whisper, a simple game created as an example of the yell peer-to-peer (p2p) netw
 was created as a submission to the Mountain Madness 2023 Hackathon.
 This hackathon is organized by the <a href="https://sfucsss.org">CSSS</a> at <a href="https://sfu.ca">SFU</a>.
 
-<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=7cDjeojIczM"></iframe>
+<a href="https://www.youtube.com/watch?v=7cDjeojIczM">Example Video of Four Nodes Communicating.</a>
 
 ## Lost in Translation
 
@@ -56,9 +56,9 @@ so the network will print errors for lack of node-communication on the part of t
 
 ## Installation
 
-<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=BloI8qzGESs"></iframe>
-<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=6XToP_iUhs0"></iframe>
-<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=g6Pz9rZQadM"></iframe>
+<a href="https://www.youtube.com/watch?v=BloI8qzGESs">Installation on Debian-based Linux Distributions.</a>
+<a href="https://www.youtube.com/watch?v=6XToP_iUhs0">Installation on Arch-based Linux Distributions.</a>
+<a href="https://www.youtube.com/watch?v=g6Pz9rZQadM">Installation on MacOS.</a>
 
 It is recommended that players compile and use this software under a UNIX system.
 `libyell` and `whisper` are compiled with the Clang compiler,
