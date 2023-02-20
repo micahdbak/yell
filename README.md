@@ -57,7 +57,9 @@ so the network will print errors for lack of node-communication on the part of t
 ## Installation
 
 <a href="https://www.youtube.com/watch?v=BloI8qzGESs">Installation on Debian-based Linux Distributions.</a>
+
 <a href="https://www.youtube.com/watch?v=6XToP_iUhs0">Installation on Arch-based Linux Distributions.</a>
+
 <a href="https://www.youtube.com/watch?v=g6Pz9rZQadM">Installation on MacOS.</a>
 
 It is recommended that players compile and use this software under a UNIX system.
