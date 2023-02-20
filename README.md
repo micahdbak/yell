@@ -35,7 +35,9 @@ The `pthreads` library comes by default with Linux and MacOS.
 Enter the following with respect to your operating system, as a super user (using `sudo`, if necessary):
 
 Debian-based distributions (e.g., Ubuntu):  ```apt install clang libncurses-dev```
+
 Arch-based distributions (e.g., Manjaro):   ```pacman -S clang ncurses```
+
 MacOS, with <a href="https://brew.sh/">HomeBrew</a>:    ```brew install ncurses```  (MacOS' default C compiler is Clang.)
 
 When these dependencies are installed, `cd` into `libyell`, and run:
