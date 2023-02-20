@@ -1,12 +1,11 @@
-# Yell Peer-To-Peer Network Protocol
+# Yell and Whisper
 
-A simple peer-to-peer network protocol library using POSIX threads and sockets.
-
-# Mountain Madness 2023 Submission
-
+Yell is a simple peer-to-peer network protocol library using POSIX threads and sockets.
 Whisper, a simple game created as an example of the yell peer-to-peer (p2p) network,
-was created as a submission to the mountain madness 2023 hackathon.
+was created as a submission to the Mountain Madness 2023 Hackathon.
 This hackathon is organized by the <a href="https://sfucsss.org">CSSS</a> at <a href="https://sfu.ca">SFU</a>.
+
+<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=7cDjeojIczM"></iframe>
 
 ## Lost in Translation
 
@@ -21,7 +20,45 @@ Additionally, the communication aspects of my game
 permit users to become 'lost in translation'
 through word-games, such as telephone, or others.
 
+## FOR TESTERS; PLEASE READ:
+
+Using `tmux` to use several terminals within the same window
+changes how `ncurses` inputs backspace characters to `whisper`,
+so entering fields of text will be a little strange.
+It is recommended that if you are testing this on the same machine,
+you use separate terminal windows side-by-side.
+For the domain of each node, use `127.0.0.1` for the local system.
+The port of each node is displayed in the bottom left corner of `whisper`.
+For testing on several computers, I am not certain how it will work on the *open internet*.
+However, for local network systems, (such as each system being connected to `eduroam` at SFU),
+Use the local IP address for the domain of each node.
+This has worked in preliminary testing.
+The local IP address of a system can be found by using `ip addr` on Linux,
+or on MacOS, by clicking the WIFI logo with the OPTION key held down.
+
+### A note to consider:
+
+Yell and whisper are proof-of-concept software.
+Please do not expect them to hold up test them in a production environment,
+or with slow particularly slow nodes.
+This software is a proof-of-concept that will be improved with time.
+
+Also, when one node exits the environment, please let each other node exit as well.
+Whisper does not handle individual node exits yet,
+so the network will print errors for lack of node-communication on the part of the exited node.
+
+## Whisper Controls
+
+* `c`: `c`onnect to another node. The player will be prompted to provide the domain and port of the node for which they are connecting.
+* `y`: `y`ell to other nodes. The player will be prompted to enter the message they wish to send.
+* `q`: `q`uit the game.
+* Arrow-Keys: Move around the room. This movement will be synchronized with other nodes.
+
 ## Installation
+
+<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=BloI8qzGESs"></iframe>
+<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=6XToP_iUhs0"></iframe>
+<iframe width="720px" height="405px" src = "https://www.youtube.com/watch?v=g6Pz9rZQadM"></iframe>
 
 It is recommended that players compile and use this software under a UNIX system.
 `libyell` and `whisper` are compiled with the Clang compiler,
@@ -54,7 +91,7 @@ Run:
 The binary file `whisper` will now be in `whisper/bin/whisper`.
 Run the binary file `whisper` to play the game.
 
-# Technology
+## Technology
 
 Whisper showcases the capabilities of the yell p2p network,
 allowing players to connect to the other player directly,
@@ -86,8 +123,3 @@ This game is created using the `ncurses` terminal-user-interface (TUI) library.
 When opened, the player is prompted to choose a display name.
 Then, they are situated as a ASCII person in an empty box.
 The following controls are available to connect with and communicate with nodes:
-
-* `c`: `c`onnect to another node. The player will be prompted to provide the domain and port of the node for which they are connecting.
-* `y`: `y`ell to other nodes. The player will be prompted to enter the message they wish to send.
-* `q`: `q`uit the game.
-* Arrow-Keys: Move around the room. This movement will be synchronized across other nodes.
