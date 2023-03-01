@@ -1,7 +1,7 @@
-/* libyell: C implimentation of the yell peer-to-peer protocol
- * Author:  Micah Baker
- * Date:    18 February 2023
- */
+/*********************************************
+ **  libyell: C implimentation of the yell  **
+ **           node communication protocol.  **
+ *********************************************/
 
 #ifndef YELL_H
 #define YELL_H
@@ -21,11 +21,31 @@
 #define BUFFER_SIZE  1024
 #define NAME_SIZE    64
 
+/* yellevent: yell event structure.
+ * ----
+ * This structure holds information on an event that occurred between nodes.
+ * An example of an event is a private message, a public message, a new node
+ * connection, a node disconnection, etc. */
 typedef struct yellevent {
 	char buf[BUFFER_SIZE];
 	int type;
 } yellevent_t;
 
+// node in a linked-list of yellevent structures
+struct yellevent_node {
+	yellevent_t *event;
+	struct yellevent_node *next;
+};
+
+// event structure wrapper ---- passed to program
+typedef struct yellevent_verbose {
+	yellevent_t *event;
+} event_t;
+
+/* yellnode: yell node structure.
+ * ----
+ * This structure describes a node and an active, or previously active,
+ * connection regarding the node */
 typedef struct yellnode {
 	char name[NAME_SIZE];
 	int fd, kill;
@@ -33,15 +53,10 @@ typedef struct yellnode {
 	yellevent_t event;
 } yellnode_t;
 
-typedef struct yellevent_node {
-	yellevent_t *event;
-	struct yellevent_node *next;
-} eventnode_t;
-
-typedef struct yellevent_verbose {
-	yellevent_t *event;
-} event_t;
-
+/* yellself: information regarding the activity of the yell protocol.
+ * ----
+ *  This structure contains all information about the yell protocols
+ *  current activity, and active connections with other nodes. */
 typedef struct yellself {
 	FILE *logfile;
 	char name[NAME_SIZE];
