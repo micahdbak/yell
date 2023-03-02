@@ -1,17 +1,16 @@
-CC = clang
-
-INCLUDE = ./include
-OBJ = ./obj
-LIB = ./lib
+CC      := clang
+INCLUDE := ./include
+OBJ     := ./obj
+LIB     := ./lib
 
 $(OBJ)/%.o: $(INCLUDE)/%.c
 	mkdir -p $(OBJ)
 	$(CC) -c -o $@ $<
 
-.PHONY: libyell
-libyell: $(OBJ)/yell.o
+.PHONY: yell
+yell: $(OBJ)/yell.o $(OBJ)/LL.o
 	mkdir -p $(LIB)
-	ar -cvq $(LIB)/libyell.a $(OBJ)/yell.o
+	ar -cvq $(LIB)/yell.a $(OBJ)/yell.o $(OBJ)/LL.o
 
 .PHONY: clean
 clean:

@@ -6,103 +6,77 @@
 #ifndef YELL_H
 #define YELL_H
 
-#include <stdint.h>
 #include <netinet/in.h>
 #include <pthread.h>
+
+#include "LL.h"
 
 #define YELL_SUCCESS  0
 #define YELL_FAILURE  1
 
-#define YELLEVENT_MESSAGE   0b0001
-#define YELLEVENT_RESPONSE  0b0010
-#define YELLEVENT_PING      0b0100
-#define YELLEVENT_OK        0b1000
+#define MIN_PORT  5000
+#define MAX_PORT  5100
 
-#define BUFFER_SIZE  1024
-#define NAME_SIZE    64
+#define MAX_CONNECTIONS  100
 
-/* yellevent: yell event structure.
- * ----
- * This structure holds information on an event that occurred between nodes.
- * An example of an event is a private message, a public message, a new node
- * connection, a node disconnection, etc. */
-typedef struct yellevent {
-	char buf[BUFFER_SIZE];
-	int type;
-} yellevent_t;
+// each packet holds maximum one kilobyte
+#define PACKET_SIZE  1024
 
-// node in a linked-list of yellevent structures
-struct yellevent_node {
-	yellevent_t *event;
-	struct yellevent_node *next;
+enum yell_event_type {
+	YET_PING,
+	YET_MESSAGE,
+	YET_CONNECTION,
+	YET_DISCONNECTION
 };
 
-// event structure wrapper ---- passed to program
-typedef struct yellevent_verbose {
-	yellevent_t *event;
-} event_t;
+struct yell_peer {
+	struct sockaddr_in sockaddr;
+};
 
-/* yellnode: yell node structure.
- * ----
- * This structure describes a node and an active, or previously active,
- * connection regarding the node */
-typedef struct yellnode {
-	char name[NAME_SIZE];
-	int fd, kill;
-	struct sockaddr_in addr;
-	yellevent_t event;
-} yellnode_t;
+struct yell_event {
+	char packet[PACKET_SIZE];
+	enum yell_event_type type;
+	struct yell_peer *peer;
+};
 
-/* yellself: information regarding the activity of the yell protocol.
- * ----
- *  This structure contains all information about the yell protocols
- *  current activity, and active connections with other nodes. */
-typedef struct yellself {
-	FILE *logfile;
-	char name[NAME_SIZE];
-	int fd, port,
-	    close;
-	struct sockaddr_in addr;
-	pthread_t thread;
-	pthread_mutex_t close_mutex,
-			nodes_mutex, events_mutex;
-	struct yellnode_ll {
-		yellnode_t *node;
-		struct yellnode_ll *next;
-	} *nodes;
-	struct yellevent_ll {
-		eventnode_t *head, *tail;
-	} events;
-} yellself_t;
+struct yell {
+	FILE *log;
 
-// allow other nodes to connect to self
-int yell_init(yellself_t *self, const char *name);
+	int close;
+	pthread_mutex_t close_mutex;
 
-// connect to a node, and 
-yellnode_t *yell_add(yellself_t *self, const char *addr, int port);
+	int sockfd, sockport;
+	struct sockaddr_in sockaddr;
+	pthread_t listen_thread;
 
-// find node by name
-yellnode_t *yell_node(yellself_t *self, const char *name);
+	struct LL events, peers;
+	pthread_mutex_t events_mutex, peers_mutex;
+};
 
-// print information about self and connected nodes
-void yell_debug(yellself_t *self, FILE *dst);
+struct yell_peer *yell_findpeer(struct yell *self, struct sockaddr *sockaddr, socklen_t *addrlen);
 
-// print yell logs to file
-void yell_log(yellself_t *self, FILE *dst);
+int yell_start(FILE *log, struct yell *self);
 
-// yell a message to a specific node
-yellevent_t *yell_private(yellself_t *self, yellnode_t *node, const char *message);
+struct yell_peer *yell_makepeer(const char *addr, int port);
 
-// yell a message to every connected node
-int yell(yellself_t *self, const char *message);
+int yell_connect(struct yell *self, struct yell_peer *peer);
 
-// parse events in the yell queue
-event_t *yell_nextevent(yellself_t *self);
+int yell_peer(struct yell *self, struct yell_peer *peer, const char *message);
 
-// free event node
-void yell_freeevent(event_t *event);
+int yell(struct yell *self, const char *message);
 
-// close all node connections and threads
-void yell_exit(yellself_t *self);
+struct yell_event *yell_event(struct yell *self);
+
+void yell_freeevent(struct yell_event *event);
+
+void yell_freepeer(struct yell_peer *peer);
+
+void yell_exit(struct yell *self);
+
+void yell_addrf(FILE *file, const char *format, struct sockaddr_in *sockaddr);
+
+void yell_debugf(FILE *file, struct yell *self);
+
+void yell_logf(FILE *file, struct yell *self);
 
 #endif

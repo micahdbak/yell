@@ -1,6 +1,6 @@
 CC      := clang
 CFLAGS  := -I'../libyell/include'
-LIBS    := ../libyell/lib/libyell.a -lncurses -pthread
+LIBS    := ../libyell/lib/yell.a -lncurses -pthread
 
 SRC = ./src
 OBJ = ./obj
