@@ -278,6 +278,12 @@ void yell_freeevent(struct yell_event *event) {
 	free(event);
 }
 
+void yell_handler(struct yell *self, struct yell_event *event) {
+	// default event handler; push event into linked list
+	if (yell_addevent(self, event) == YELL_FAILURE)
+		free(event);
+}
+
 void *yell_listen(void *self_ptr) {
 	const char *fname = "yell_listen";
 
@@ -376,8 +382,8 @@ void *yell_listen(void *self_ptr) {
 			continue;
 		}
 
-		if (yell_addevent(self, event) == YELL_FAILURE)
-			free(event);
+		// handle this event
+		self->handler(self, event);
 
 		fprintf(self->log, "%s: Sending response \"%s\".\n", fname, response);
 
@@ -391,7 +397,7 @@ void *yell_listen(void *self_ptr) {
 	return NULL;
 }
 
-int yell_start(FILE *log, struct yell *self, const char *name) {
+int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(struct yell *, struct yell_event *)) {
 	const char *fname = "yell_start";
 	int nchars;
 
@@ -465,6 +471,12 @@ int yell_start(FILE *log, struct yell *self, const char *name) {
 
 	self->close = 0;
 	pthread_mutex_init(&self->close_mutex, NULL);
+
+	// set event handler
+	if (handler == NULL)
+		self->handler = yell_handler;
+	else
+		self->handler = handler;
 
 	// attempt to open listen thread
 	if (pthread_create(&self->listen_thread, NULL,

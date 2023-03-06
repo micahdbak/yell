@@ -56,8 +56,9 @@ struct yell {
 
 	int sockfd, sockport;
 	struct sockaddr_in sockaddr;
+
 	pthread_t listen_thread;
-	pthread_mutex_t is_accept;
+	void (*handler)(struct yell *, struct yell_event *);
 
 	struct yell_LL events, peers;
 	pthread_mutex_t events_mutex, peers_mutex;
@@ -70,7 +71,8 @@ void yell_freepeer(struct yell_peer *peer);
 
 struct yell_event *yell_event(struct yell *self);
 void yell_freeevent(struct yell_event *event);
-int yell_start(FILE *log, struct yell *self, const char *name);
+void yell_handleevent(struct yell_event *);
+int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(struct yell *, struct yell_event *));
 int yell(struct yell *self, const char *message);
 void yell_exit(struct yell *self);
 

@@ -6,7 +6,34 @@
 
 #define LINE_SIZE  512
 
-#define PROMPT  "> "
+#define PEERADDRF  "($a:$p) $n"
+
+void chat_handler(struct yell *self, struct yell_event *event) {
+	// erase line and return to the beginning
+	printf("\33[2K\r");
+
+	switch (event->type) {
+	case YET_MESSAGE:
+		if (event->peer == NULL)
+			printf("[unknown] ");
+		else
+			yell_peerf(stdout, PEERADDRF ": ", event->peer->name, &event->peer->sockaddr);
+
+		printf("%s\n", event->packet);
+
+		break;
+	default:
+		printf("Received event.\n");
+
+		break;
+	}
+
+	// print prompt
+	yell_peerf(stdout, PEERADDRF " > ", self->name, &self->sockaddr);
+	fflush(stdout);
+
+	free(event);
+}
 
 int main(void) {
 	FILE *yell_log;
@@ -17,7 +44,7 @@ int main(void) {
 	     line[LINE_SIZE], *body;
 	int c, i;
 
-	printf("What's your name?\n" PROMPT);
+	printf("What's your name?\n> ");
 
 	for (i = 0; i <= NAME_SIZE; ++i) {
 		c = getc(stdin);
@@ -35,7 +62,7 @@ int main(void) {
 
 	name[i] = '\0';
 
-	if (yell_start(stderr, &self, name) == YELL_FAILURE) {
+	if (yell_start(stderr, &self, name, chat_handler) == YELL_FAILURE) {
 		printf("Failure starting yell.\n");
 
 		return EXIT_FAILURE;
@@ -44,6 +71,7 @@ int main(void) {
 	for (;;) {
 		// handle yell events
 
+		/*
 		event = yell_event(&self);
 
 		while (event != NULL) {
@@ -65,9 +93,11 @@ int main(void) {
 			yell_freeevent(event);
 			event = yell_event(&self);
 		}
+		*/
 
 		// print command prompt
-		printf(PROMPT);
+		yell_peerf(stdout, PEERADDRF " > ", self.name, &self.sockaddr);
+		fflush(stdout);
 
 		// read a line
 
@@ -110,7 +140,8 @@ int main(void) {
 		if (strcmp(line, "yell") == 0) {
 			yell(&self, body);
 
-			yell_peerf(stdout, "$n@$a:$p ", self.name, &self.sockaddr);
+			printf("\033[A\33[2K\r");
+			yell_peerf(stdout, PEERADDRF ": ", self.name, &self.sockaddr);
 			printf("%s\n", body);
 
 			continue;
