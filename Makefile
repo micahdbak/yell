@@ -8,9 +8,9 @@ $(OBJ)/%.o: $(INCLUDE)/%.c
 	$(CC) -c -o $@ $<
 
 .PHONY: yell
-yell: $(OBJ)/yell.o $(OBJ)/LL.o
+yell: $(OBJ)/yell.o $(OBJ)/yell_LL.o
 	mkdir -p $(LIB)
-	ar -cvq $(LIB)/yell.a $(OBJ)/yell.o $(OBJ)/LL.o
+	ar -cvq $(LIB)/yell.a $^
 
 .PHONY: clean
 clean:

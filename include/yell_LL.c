@@ -1,15 +1,15 @@
 #include <stdlib.h>
 
-#include "LL.h"
+#include "yell_LL.h"
 
-int LL_insert(struct LL *LL, int index, void *data) {
-	struct LL_node *node, *march;
+int yell_LL_insert(struct yell_LL *LL, int index, void *data) {
+	struct yell_LL_node *node, *march;
 
-	node = (struct LL_node *)malloc(sizeof(struct LL_node));
+	node = (struct yell_LL_node *)malloc(sizeof(struct yell_LL_node));
 
 	// memory allocation error
 	if (node == NULL)
-		return LL_FAILURE;
+		return YELL_LL_FAILURE;
 
 	node->data = data;
 	node->next = NULL;
@@ -18,18 +18,18 @@ int LL_insert(struct LL *LL, int index, void *data) {
 		LL->head = node;
 		LL->tail = LL->head;
 
-		return LL_SUCCESS;
+		return YELL_LL_SUCCESS;
 	}
 
 	switch (index) {
 	// insert at head of linked list
-	case LL_HEAD:
+	case YELL_LL_HEAD:
 		node->next = LL->head;
 		LL->head = node;
 
 		break;
 	// insert at tail of linked list
-	case LL_TAIL:
+	case YELL_LL_TAIL:
 		LL->tail->next = node;
 		LL->tail = node;
 
@@ -49,7 +49,7 @@ int LL_insert(struct LL *LL, int index, void *data) {
 		if (march == NULL) {
 			free(node);
 
-			return LL_FAILURE;
+			return YELL_LL_FAILURE;
 		}
 
 		// on the off chance that we are inserting at the tail: set the tail
@@ -62,23 +62,23 @@ int LL_insert(struct LL *LL, int index, void *data) {
 		break;
 	}
 
-	return LL_SUCCESS;
+	return YELL_LL_SUCCESS;
 }
 
-void *LL_remove(struct LL *LL, int index) {
-	struct LL_node *node, *march;
+void *yell_LL_remove(struct yell_LL *LL, int index) {
+	struct yell_LL_node *node, *march;
 	void *data = NULL;
 
 	if (LL->head == NULL)
 		return NULL;
 
 	// the index to remove is the tail, but the tail is the head, remove the head instead
-	if (index == LL_TAIL && LL->tail == LL->head)
-		index = LL_HEAD;
+	if (index == YELL_LL_TAIL && LL->tail == LL->head)
+		index = YELL_LL_HEAD;
 
 	switch (index) {
 	// remove head of linked list
-	case LL_HEAD:
+	case YELL_LL_HEAD:
 		// remove the head
 		node = LL->head;
 		LL->head = node->next;
@@ -89,7 +89,7 @@ void *LL_remove(struct LL *LL, int index) {
 
 		break;
 	// remove tail of linked list
-	case LL_TAIL:
+	case YELL_LL_TAIL:
 		// for each node, until the next node is the tail
 		for (march = LL->head; march->next != LL->tail; march = march->next)
 			;
