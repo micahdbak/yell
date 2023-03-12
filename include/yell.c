@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+#include <ctype.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -33,13 +34,32 @@ struct yell_peer *yell_findpeer(struct yell *self, const char *name) {
 	return NULL;
 }
 
-int yell_peer(struct yell *self, struct yell_peer *peer, enum yell_eventtype type, const char *message, char *response) {
+int yell_pushpeer(struct yell *self, struct yell_peer *peer) {
+	const char *fname = "yell_pushpeer()";
+
+	pthread_mutex_lock(&self->peers_mutex);	
+
+	// attempt to insert this peer into linked list
+	if (yell_LL_insert(&self->peers, YELL_LL_TAIL, (void *)peer) == YELL_LL_FAILURE) {
+		fprintf(self->log, "%s: Couldn't insert peer into linked list.\n", fname);
+
+		free(peer);
+
+		pthread_mutex_unlock(&self->peers_mutex);	
+
+		return YELL_FAILURE;
+	}
+
+	pthread_mutex_unlock(&self->peers_mutex);
+
+	return YELL_SUCCESS;
+}
+
+int yell_topeer(struct yell *self, struct yell_peer *peer, enum yell_eventtype type, const char *message, char *response) {
 	const char *fname = "yell_peer";
 
 	char packet[PACKET_SIZE + 1];
-	int peerfd,
-	    nchars,
-	    nbytes;
+	int peerfd, nbytes;
 
 	// attempt to open socket
 	peerfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -61,21 +81,11 @@ int yell_peer(struct yell *self, struct yell_peer *peer, enum yell_eventtype typ
 		return YELL_FAILURE;
 	}
 
-	// connected to peer
-
-	packet[0] = type;
-	strcpy(&packet[1], self->name);
-
-	nchars = strlen(self->name);
-
-	if (message != NULL) {
-		// message name / body separator
-		packet[1 + nchars] = ':';
-		// body
-		strcpy(&packet[2 + nchars], message);
-	}
-
-	fprintf(self->log, "%s: Sending packet \"%s\".\n", fname, packet);
+	// create packet
+	if (message == NULL)
+		sprintf(packet, "%c%s;%d;", (char)type, self->name, self->sockport);
+	else
+		sprintf(packet, "%c%s;%d;%s", (char)type, self->name, self->sockport, message);
 
 	// write message
 	if (write(peerfd, packet, strlen(packet)) < 0) {
@@ -101,8 +111,6 @@ int yell_peer(struct yell *self, struct yell_peer *peer, enum yell_eventtype typ
 
 	packet[nbytes] = '\0';
 
-	fprintf(self->log, "%s: Received packet \"%s\".\n", fname, packet);
-
 	if (response != NULL)
 		strcpy(response, packet);
 	else
@@ -115,92 +123,14 @@ int yell_peer(struct yell *self, struct yell_peer *peer, enum yell_eventtype typ
 	return YELL_SUCCESS;
 }
 
-struct yell_peer *yell_makepeer(struct yell *self, const char *addr, int port) {
-	const char *fname = "yell_makepeer";
-
-	struct yell_peer *peer;
-	char message[PACKET_SIZE + 1],
-	     response[PACKET_SIZE + 1];
-	int nchars;
-
-	peer = (struct yell_peer *)malloc(sizeof(struct yell_peer));
-
-	// memory allocation error
-	if (peer == NULL) {
-		fprintf(self->log, "%s: Memory allocation error.\n", fname);
-
-		return NULL;
-	}
-
-	memset(&peer->sockaddr, 0, sizeof(struct sockaddr_in));
-
-	peer->sockaddr.sin_family = AF_INET;
-	peer->sockaddr.sin_addr.s_addr = inet_addr(addr);
-	peer->sockaddr.sin_port = htons(port);
-
-	if (yell_peer(self, peer, YET_WHOAREYOU, NULL, response) == YELL_FAILURE) {
-		fprintf(self->log, "%s: Couldn't message peer.\n", fname);
-
-		free(peer);
-
-		return NULL;
-	}
-
-	// message successful; copy name
-	strncpy(peer->name, response, NAME_SIZE);
-
-	nchars = strlen(response);
-
-	if (nchars < NAME_SIZE)
-		peer->name[nchars] = '\0';
-	else
-		peer->name[NAME_SIZE] = '\0';
-
-	fprintf(self->log, "%s: Return.\n", fname);
-
-	return peer;
-}
-
-struct yell_peer *yell_addpeer(struct yell *self, const char *addr, int port) {
-	const char *fname = "yell_addpeer";
-
-	struct yell_peer *peer;
-
-	peer = yell_makepeer(self, addr, port);
-
-	// couldn't make peer
-	if (peer == NULL)
-		return NULL;
-
-	pthread_mutex_lock(&self->peers_mutex);	
-
-	// attempt to insert this peer into linked list
-	if (yell_LL_insert(&self->peers, YELL_LL_TAIL, (void *)peer) == YELL_LL_FAILURE) {
-		fprintf(self->log, "%s: Couldn't insert peer into linked list.\n", fname);
-
-		free(peer);
-
-		pthread_mutex_unlock(&self->peers_mutex);	
-
-		return NULL;
-	}
-
-	pthread_mutex_unlock(&self->peers_mutex);	
-
-	return peer;
-}
-
-void yell_freepeer(struct yell_peer *peer) {
-	free(peer);
-}
-
-struct yell_event *yell_makeevent(struct yell *self, const char *packet) {
+struct yell_event *yell_makeevent(struct yell *self, const char *packet, struct sockaddr_in sockaddr) {
 	const char *fname = "yell_makeevent()";
 
 	struct yell_event *event;
 	char name[NAME_SIZE + 1];
 	struct yell_peer *peer;
-	int i, j;
+	int i, j,
+	    sockport;
 
 	event = (struct yell_event *)malloc(sizeof(struct yell_event));
 
@@ -215,9 +145,11 @@ struct yell_event *yell_makeevent(struct yell *self, const char *packet) {
 	event->type = packet[0];
 
 	// read peer name
-	for (i = 1, j = 0; packet[i] != ':' && packet[i] != '\0'; ++i, ++j) {
+	for (i = 1, j = 0; packet[i] != ';' && packet[i] != '\0'; ++i, ++j) {
+		// name size is exceeded
 		if (j == NAME_SIZE) {
-			while (packet[i] != ':' && packet[i] != '\0')
+			// skip characters until a semicolon or end of string is reached
+			while (packet[i] != ';' && packet[i] != '\0')
 				++i;
 
 			break;
@@ -228,13 +160,69 @@ struct yell_event *yell_makeevent(struct yell *self, const char *packet) {
 
 	name[j] = '\0';
 
+	// check for invalid syntax
+	if (packet[i] == '\0') {
+		free(event);
+
+		return NULL;
+	}
+
+	// don't read the semicolon
+	++i;
+
+	// read the port of this node
+	for (sockport = 0; packet[i] != ';' && packet[i] != '\0'; ++i) {
+		if (!isdigit(packet[i])) {
+			// skip characters until a semicolon or end of string is reached
+			while (packet[i] != ';' && packet[i] != '\0')
+				++i;
+
+			break;
+		}
+
+		sockport = sockport * 10 + packet[i] - '0';
+	}
+
+	// check for invalid syntax
+	if (sockport == 0 || packet[i] == '\0') {
+		free(event);
+
+		return NULL;
+	}
+
+	// attempt to find the peer associated with this packet
 	peer = yell_findpeer(self, name);
 
-	// if a peer wasn't found, event->peer will be NULL
+	if (peer == NULL) {
+		// set this peer's port to the one read
+		sockaddr.sin_port = htons(sockport);
+
+		// create the peer
+
+		peer = (struct yell_peer *)malloc(sizeof(struct yell_peer));
+
+		// memory allocation error
+		if (peer == NULL) {
+			fprintf(self->log, "%s: Memory allocation error.\n", fname);
+
+			free(event);
+
+			return NULL;
+		}
+
+		peer->sockaddr = sockaddr;
+		peer->sockport = sockport;
+		strcpy(peer->name, name);
+
+		// push this peer
+		yell_pushpeer(self, peer);
+	}
+
+	// set the event's peer
 	event->peer = peer;
 
 	if (packet[i] == '\0')
-		// no body provided
+		// syntax error... assume no body provided
 		event->packet[0] = '\0';
 	else
 		// copy body of packet to event->packet
@@ -243,8 +231,8 @@ struct yell_event *yell_makeevent(struct yell *self, const char *packet) {
 	return event;
 }
 
-int yell_addevent(struct yell *self, struct yell_event *event) {
-	const char *fname = "yell_addevent()";
+int yell_pushevent(struct yell *self, struct yell_event *event) {
+	const char *fname = "yell_pushevent()";
 
 	pthread_mutex_lock(&self->events_mutex);
 
@@ -262,7 +250,7 @@ int yell_addevent(struct yell *self, struct yell_event *event) {
 	return YELL_SUCCESS;
 }
 
-struct yell_event *yell_event(struct yell *self) {
+struct yell_event *yell_nextevent(struct yell *self) {
 	struct yell_event *event;
 
 	pthread_mutex_lock(&self->events_mutex);
@@ -274,36 +262,33 @@ struct yell_event *yell_event(struct yell *self) {
 	return event;
 }
 
-void yell_freeevent(struct yell_event *event) {
-	free(event);
-}
-
-void yell_handler(struct yell *self, struct yell_event *event) {
-	// default event handler; push event into linked list
-	if (yell_addevent(self, event) == YELL_FAILURE)
-		free(event);
-}
-
 void *yell_listen(void *self_ptr) {
 	const char *fname = "yell_listen";
 
-	struct yell       *self = (struct yell *)self_ptr; // information on self
-	int                peerfd, nbytes, // peer connection, number of bytes received
-	                   i, j; // iterators
-	socklen_t          addrlen = sizeof(struct sockaddr_in); // size of self's address
-	char               packet[PACKET_SIZE + 1], // received packet
-	                   response[PACKET_SIZE + 1], // packet to send (response)
-	                   name[NAME_SIZE + 1]; // name of peer
-	struct sockaddr_in sockaddr_self, sockaddr_peer; // address of peer
+	struct yell *self;  // information on self
+
+	int i, j;           // iterators
+
+	int                peerfd, nbytes;               // peer socket, number of bytes read
+	struct sockaddr_in sockaddr_self, sockaddr_peer; // addresses
+	socklen_t          addrlen, addrlen_peer;        // size of sockaddr
+
+	char packet[PACKET_SIZE + 1],   // received packet
+	     response[PACKET_SIZE + 1], // packet to send
+	     name[NAME_SIZE + 1];       // name of peer
+
 	struct yell_event *event; // created event from a packet
+
+	self = (struct yell *)self_ptr;
+
+	addrlen = sizeof(struct sockaddr_in);
 
 	for (;;) {
 		// safety measure---on occasion, self->sockaddr is overwritten in errors
 		memcpy(&sockaddr_self, &self->sockaddr, sizeof(struct sockaddr_in));
 
 		// accept a connection queued on the socket
-		peerfd = accept(self->sockfd, (struct sockaddr *)&sockaddr_self,
-		                &addrlen);
+		peerfd = accept(self->sockfd, (struct sockaddr *)&sockaddr_self, &addrlen);
 
 		// check if this thread should close
 
@@ -326,7 +311,9 @@ void *yell_listen(void *self_ptr) {
 			break;
 		}
 
-		
+		// get the address of the received connection
+		getsockname(peerfd, (struct sockaddr *)&sockaddr_peer, &addrlen_peer);
+
 		// attempt to receive a packet
 		nbytes = read(peerfd, packet, PACKET_SIZE);
 
@@ -342,17 +329,21 @@ void *yell_listen(void *self_ptr) {
 		// ensure packet is null-terminated
 		packet[nbytes] = '\0';
 
-		fprintf(self->log, "%s: Received packet \"%s\".\n", fname, packet);
+		// create event from packet
+		event = yell_makeevent(self, packet, sockaddr_peer);
 
-		event = yell_makeevent(self, packet);
-
-		// event->peer is NULL if the peer is unknown
+		if (event != NULL) {
+			// handle the event
+			if (self->event_handler(self, event) == YELL_FAILURE)
+				free(event);
+		}
 
 		response[0] = YET_FAILURE;
 		response[1] = '\0';
 
 		switch (event->type) {
 		case YET_PING:
+			// respond by pinging back
 			response[0] = YET_PING;
 
 			break;
@@ -382,11 +373,6 @@ void *yell_listen(void *self_ptr) {
 			continue;
 		}
 
-		// handle this event
-		self->handler(self, event);
-
-		fprintf(self->log, "%s: Sending response \"%s\".\n", fname, response);
-
 		if (write(peerfd, response, strlen(response)) < 0)
 			fprintf(self->log, "%s: write(): %s\n", fname, strerror(errno));
 
@@ -397,7 +383,7 @@ void *yell_listen(void *self_ptr) {
 	return NULL;
 }
 
-int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(struct yell *, struct yell_event *)) {
+int yell_start(FILE *log, struct yell *self, const char *name, int (*event_handler)(struct yell *, struct yell_event *)) {
 	const char *fname = "yell_start";
 	int nchars;
 
@@ -473,10 +459,10 @@ int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(s
 	pthread_mutex_init(&self->close_mutex, NULL);
 
 	// set event handler
-	if (handler == NULL)
-		self->handler = yell_handler;
+	if (event_handler == NULL)
+		self->event_handler = yell_pushevent;
 	else
-		self->handler = handler;
+		self->event_handler = event_handler;
 
 	// attempt to open listen thread
 	if (pthread_create(&self->listen_thread, NULL,
@@ -500,6 +486,47 @@ int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(s
 	return YELL_SUCCESS;
 }
 
+int yell_connect(struct yell *self, const char *addr, int port) {
+	const char *fname = "yell_connect";
+
+	struct sockaddr_in sockaddr;
+	struct yell_peer *peer;
+	char name[NAME_SIZE + 1];
+
+	memset(&sockaddr, 0, sizeof(addr));
+
+	sockaddr.sin_family = AF_INET;
+	sockaddr.sin_addr.s_addr = inet_addr(addr);
+	sockaddr.sin_port = htons(port);
+
+	peer = (struct yell_peer *)malloc(sizeof(struct yell_peer));
+
+	// memory allocation error
+	if (peer == NULL) {
+		fprintf(self->log, "%s: Memory allocation error.\n", fname);
+
+		return YELL_FAILURE;
+	}
+
+	peer->sockaddr = sockaddr;
+
+	if (yell_topeer(self, peer, YET_WHOAREYOU, NULL, name) == YELL_FAILURE) {
+		fprintf(self->log, "%s: Couldn't message peer.\n", fname);
+
+		free(peer);
+
+		return YELL_FAILURE;
+	}
+
+	// message successful; copy name
+	strncpy(peer->name, name, NAME_SIZE);
+	peer->name[strlen(name)] = '\0';
+
+	yell_pushpeer(self, peer);
+
+	return YELL_SUCCESS;
+}
+
 int yell(struct yell *self, const char *message) {
 	struct yell_LL_node *march;
 
@@ -508,7 +535,7 @@ int yell(struct yell *self, const char *message) {
 	// for every connected peer..
 	for (march = self->peers.head; march != NULL; march = march->next)
 		// ...yell the message to that peer
-		yell_peer(self, (struct yell_peer *)march->data, YET_MESSAGE, message, NULL);
+		yell_topeer(self, (struct yell_peer *)march->data, YET_MESSAGE, message, NULL);
 
 	pthread_mutex_unlock(&self->peers_mutex);
 
@@ -540,29 +567,33 @@ void yell_exit(struct yell *self) {
 	pthread_mutex_destroy(&self->peers_mutex);
 
 	while ((event = yell_LL_remove(&self->events, YELL_LL_HEAD)) != NULL)
-		yell_freeevent(event);
+		free(event);
 
 	while ((peer = yell_LL_remove(&self->events, YELL_LL_HEAD)) != NULL)
-		yell_freepeer(peer);
+		free(peer);
 
 	fprintf(self->log, "%s: Exited.\n", fname);
 }
 
-void yell_peerf(FILE *file, const char *format, const char *name, struct sockaddr_in *sockaddr) {
+void yell_peerf(FILE *file, const char *format, const char *name, struct sockaddr_in sockaddr) {
 	char addr[INET_ADDRSTRLEN];
 	int port;
 
-	if (name == NULL || sockaddr == NULL)
-		return;
+	if (sockaddr.sin_addr.s_addr == INADDR_ANY)
+		strcpy(addr, "127.0.0.1");
+	else
+		inet_ntop(sockaddr.sin_family, &sockaddr.sin_addr, addr, INET_ADDRSTRLEN);
 
-	inet_ntop(sockaddr->sin_family, &sockaddr->sin_addr, addr, INET_ADDRSTRLEN);
-	port = ntohs(sockaddr->sin_port);
+	port = ntohs(sockaddr.sin_port);
 
 	for (; *format != '\0'; ++format) {
 		if (*format == '$') {
 			switch (*++format) {
 			// print name
 			case 'n':
+				if (name == NULL)
+					break;
+
 				fprintf(file, "%s", name);
 
 				break;
@@ -603,7 +634,7 @@ void yell_debugf(FILE *file, struct yell *self) {
 	fprintf(file, "--- begin yell debug ---\n");
 
 	fprintf(file, "Self is:\n");
-	yell_peerf(file, "\t$n@$a:$p\n", self->name, &self->sockaddr);
+	yell_peerf(file, "\t$n@$a:$p\n", self->name, self->sockaddr);
 
 	pthread_mutex_lock(&self->peers_mutex);
 
@@ -613,7 +644,7 @@ void yell_debugf(FILE *file, struct yell *self) {
 
 	for (march = self->peers.head; march != NULL; march = march->next) {
 		peer = (struct yell_peer *)march->data;
-		yell_peerf(file, "\t$n@$a:$p\n", peer->name, &peer->sockaddr);
+		yell_peerf(file, "\t$n@$a:$p\n", peer->name, peer->sockaddr);
 
 		++npeers;
 	}

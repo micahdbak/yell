@@ -38,6 +38,7 @@ enum yell_eventtype {
 struct yell_peer {
 	char name[NAME_SIZE + 1];
 	struct sockaddr_in sockaddr;
+	int sockport;
 };
 
 struct yell_event {
@@ -58,26 +59,27 @@ struct yell {
 	struct sockaddr_in sockaddr;
 
 	pthread_t listen_thread;
-	void (*handler)(struct yell *, struct yell_event *);
+	int (*event_handler)(struct yell *, struct yell_event *);
 
 	struct yell_LL events, peers;
 	pthread_mutex_t events_mutex, peers_mutex;
 };
 
-struct yell_peer *yell_findpeer(struct yell *self, const char *name);
-int yell_peer(struct yell *self, struct yell_peer *peer, enum yell_eventtype type, const char *message, char *response);
-struct yell_peer *yell_addpeer(struct yell *self, const char *addr, int port);
-void yell_freepeer(struct yell_peer *peer);
+struct yell_peer  *yell_findpeer(struct yell *self, const char *name);
+int                yell_pushpeer(struct yell *self, struct yell_peer *peer);
+int                yell_topeer(struct yell *self, struct yell_peer *peer, enum yell_eventtype type, const char *message, char *response);
 
-struct yell_event *yell_event(struct yell *self);
-void yell_freeevent(struct yell_event *event);
-void yell_handleevent(struct yell_event *);
-int yell_start(FILE *log, struct yell *self, const char *name, void (*handler)(struct yell *, struct yell_event *));
-int yell(struct yell *self, const char *message);
-void yell_exit(struct yell *self);
+struct yell_event *yell_makeevent(struct yell *self, const char *packet, struct sockaddr_in sockaddr);
+int                yell_pushevent(struct yell *self, struct yell_event *event);
+struct yell_event *yell_nextevent(struct yell *self);
 
-void yell_peerf(FILE *file, const char *format, const char *name, struct sockaddr_in *sockaddr);
-void yell_debugf(FILE *file, struct yell *self);
-void yell_logf(FILE *file, struct yell *self);
+int                yell_start(FILE *log, struct yell *self, const char *name, int (*event_handler)(struct yell *, struct yell_event *));
+int                yell_connect(struct yell *self, const char *addr, int port);
+int                yell(struct yell *self, const char *message);
+void               yell_exit(struct yell *self);
+
+void               yell_peerf(FILE *file, const char *format, const char *name, struct sockaddr_in sockaddr);
+void               yell_debugf(FILE *file, struct yell *self);
+void               yell_logf(FILE *file, struct yell *self);
 
 #endif

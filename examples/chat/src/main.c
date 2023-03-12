@@ -8,31 +8,29 @@
 
 #define PEERADDRF  "($a:$p) $n"
 
-void chat_handler(struct yell *self, struct yell_event *event) {
+int event_handler(struct yell *self, struct yell_event *event) {
 	// erase line and return to the beginning
 	printf("\33[2K\r");
 
 	switch (event->type) {
 	case YET_MESSAGE:
-		if (event->peer == NULL)
-			printf("[unknown] ");
-		else
-			yell_peerf(stdout, PEERADDRF ": ", event->peer->name, &event->peer->sockaddr);
+		yell_peerf(stdout, PEERADDRF ": ", event->peer->name, event->peer->sockaddr);
 
 		printf("%s\n", event->packet);
 
 		break;
 	default:
-		printf("Received event.\n");
 
 		break;
 	}
 
 	// print prompt
-	yell_peerf(stdout, PEERADDRF " > ", self->name, &self->sockaddr);
+	yell_peerf(stdout, PEERADDRF "> ", self->name, self->sockaddr);
 	fflush(stdout);
 
 	free(event);
+
+	return YELL_SUCCESS;
 }
 
 int main(void) {
@@ -62,7 +60,7 @@ int main(void) {
 
 	name[i] = '\0';
 
-	if (yell_start(stderr, &self, name, chat_handler) == YELL_FAILURE) {
+	if (yell_start(stderr, &self, name, event_handler) == YELL_FAILURE) {
 		printf("Failure starting yell.\n");
 
 		return EXIT_FAILURE;
@@ -71,32 +69,8 @@ int main(void) {
 	for (;;) {
 		// handle yell events
 
-		/*
-		event = yell_event(&self);
-
-		while (event != NULL) {
-			switch (event->type) {
-			case YET_MESSAGE:
-				if (event->peer == NULL)
-					printf("[unknown] ");
-				else
-					yell_peerf(stdout, "$n@$a:$p ", event->peer->name, &event->peer->sockaddr);
-
-				printf("%s\n", event->packet);
-
-				break;
-			default:
-
-				break;
-			}
-
-			yell_freeevent(event);
-			event = yell_event(&self);
-		}
-		*/
-
 		// print command prompt
-		yell_peerf(stdout, PEERADDRF " > ", self.name, &self.sockaddr);
+		yell_peerf(stdout, PEERADDRF "> ", self.name, self.sockaddr);
 		fflush(stdout);
 
 		// read a line
@@ -141,7 +115,7 @@ int main(void) {
 			yell(&self, body);
 
 			printf("\033[A\33[2K\r");
-			yell_peerf(stdout, PEERADDRF ": ", self.name, &self.sockaddr);
+			yell_peerf(stdout, PEERADDRF ": ", self.name, self.sockaddr);
 			printf("%s\n", body);
 
 			continue;
@@ -162,17 +136,15 @@ int main(void) {
 			// split the body into two: body is host, &body[i + 1] is port
 			body[i] = '\0';
 
-			peer = yell_addpeer(&self, body, atoi(&body[i + 1]));
-
-			if (peer == NULL) {
-				printf("Couldn't create peer from address \"%s:%s\".\n"
+			if (yell_connect(&self, body, atoi(&body[i + 1])) == YELL_FAILURE) {
+				printf("Couldn't connect to peers from address \"%s:%s\".\n"
 				       "Ensure that address is in the form HOST:PORT; "
 				       "e.g., 127.0.0.1:5000.\n", body, &body[i + 1]);
 
 				continue;
 			}
 
-			yell_peerf(stdout, "Added peer $n@$a:$p.\n", peer->name, &peer->sockaddr);
+			yell_debugf(stdout, &self);
 
 			continue;
 		}
