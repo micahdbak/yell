@@ -25,14 +25,14 @@
 #define PACKET_SIZE  1024
 
 enum yell_eventtype {
-	YET_UNKNOWN       = '\0',
-	YET_SUCCESS       = 's',
-	YET_FAILURE       = 'f',
-	YET_PING          = 'p',
-	YET_WHOAREYOU     = 'w',
-	YET_MESSAGE       = 'm',
-	YET_CONNECTION    = 'c',
-	YET_DISCONNECTION = 'd'
+	YET_UNKNOWN    = '\0',
+	YET_SUCCESS    = 's',
+	YET_FAILURE    = 'f',
+	YET_PING       = 'p',
+	YET_WHOAREYOU  = 'w',
+	YET_MESSAGE    = 'm',
+	YET_CONNECT    = 'c',
+	YET_DISCONNECT = 'd'
 };
 
 struct yell_peer {

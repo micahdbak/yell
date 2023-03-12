@@ -56,7 +56,7 @@ int yell_pushpeer(struct yell *self, struct yell_peer *peer) {
 }
 
 int yell_topeer(struct yell *self, struct yell_peer *peer, enum yell_eventtype type, const char *message, char *response) {
-	const char *fname = "yell_peer";
+	const char *fname = "yell_topeer";
 
 	char packet[PACKET_SIZE + 1];
 	int peerfd, nbytes;
@@ -194,9 +194,6 @@ struct yell_event *yell_makeevent(struct yell *self, const char *packet, struct 
 	peer = yell_findpeer(self, name);
 
 	if (peer == NULL) {
-		// set this peer's port to the one read
-		sockaddr.sin_port = htons(sockport);
-
 		// create the peer
 
 		peer = (struct yell_peer *)malloc(sizeof(struct yell_peer));
@@ -211,6 +208,7 @@ struct yell_event *yell_makeevent(struct yell *self, const char *packet, struct 
 		}
 
 		peer->sockaddr = sockaddr;
+		peer->sockaddr.sin_port = htons(sockport);
 		peer->sockport = sockport;
 		strcpy(peer->name, name);
 
@@ -266,16 +264,19 @@ void *yell_listen(void *self_ptr) {
 	const char *fname = "yell_listen";
 
 	struct yell *self;  // information on self
-
-	int i, j;           // iterators
+	int len;
 
 	int                peerfd, nbytes;               // peer socket, number of bytes read
 	struct sockaddr_in sockaddr_self, sockaddr_peer; // addresses
 	socklen_t          addrlen, addrlen_peer;        // size of sockaddr
 
+	struct yell_LL_node *node;
+	struct yell_peer    *peer;
+
 	char packet[PACKET_SIZE + 1],   // received packet
 	     response[PACKET_SIZE + 1], // packet to send
-	     name[NAME_SIZE + 1];       // name of peer
+	     name[NAME_SIZE + 1],       // name of peer
+	     peer_addrstr[512];
 
 	struct yell_event *event; // created event from a packet
 
@@ -332,10 +333,11 @@ void *yell_listen(void *self_ptr) {
 		// create event from packet
 		event = yell_makeevent(self, packet, sockaddr_peer);
 
-		if (event != NULL) {
-			// handle the event
-			if (self->event_handler(self, event) == YELL_FAILURE)
-				free(event);
+		// couldn't create an event---peer is probably sus
+		if (event == NULL) {
+			close(peerfd);
+
+			continue;
 		}
 
 		response[0] = YET_FAILURE;
@@ -356,12 +358,46 @@ void *yell_listen(void *self_ptr) {
 			response[0] = YET_SUCCESS;
 		
 			break;
-		case YET_CONNECTION:
-			// TODO: deal with connections
-			response[0] = YET_SUCCESS;
+		case YET_CONNECT:
+			response[0] = '\0';
+
+			pthread_mutex_lock(&self->peers_mutex);	
+
+			// for every connected peer
+			for (node = self->peers.head; node != NULL; node = node->next) {
+				peer = (struct yell_peer *)node->data;
+
+				// do not tell peer of its own existence
+				if (peer == event->peer) {
+					if (node->next == NULL)
+						// don't terminate the list with a semicolon
+						response[strlen(response) - 1] = '\0';
+
+					continue;
+				}
+
+				// prepare peer address string
+				if (peer->sockaddr.sin_addr.s_addr == INADDR_ANY)
+					strcpy(peer_addrstr, "127.0.0.1");
+				else
+					inet_ntop(peer->sockaddr.sin_family, &peer->sockaddr.sin_addr, peer_addrstr, INET_ADDRSTRLEN);
+				len = strlen(peer_addrstr);
+				peer_addrstr[len] = ':';
+				sprintf(peer_addrstr + len + 1, "%d", ntohs(peer->sockaddr.sin_port));
+
+				// concatenate this peer to the response
+				strcat(response, peer_addrstr);
+
+				if (node->next != NULL)
+					strcat(response, ";");
+			}
+
+			pthread_mutex_unlock(&self->peers_mutex);	
+
+			printf("%s\n", response);
 
 			break;
-		case YET_DISCONNECTION:
+		case YET_DISCONNECT:
 			// TODO: deal with disconnections
 			response[0] = YET_SUCCESS;
 
@@ -378,6 +414,13 @@ void *yell_listen(void *self_ptr) {
 
 		// close connection
 		close(peerfd);
+
+		// handle the event
+		if (self->event_handler(self, event) == YELL_FAILURE) {
+			event = NULL;
+
+			free(event);
+		}
 	}
 
 	return NULL;
@@ -486,18 +529,11 @@ int yell_start(FILE *log, struct yell *self, const char *name, int (*event_handl
 	return YELL_SUCCESS;
 }
 
-int yell_connect(struct yell *self, const char *addr, int port) {
-	const char *fname = "yell_connect";
+struct yell_peer *yell_addpeer(struct yell *self, const char *addr, int port) {
+	const char *fname = "yell_addpeer";
 
-	struct sockaddr_in sockaddr;
 	struct yell_peer *peer;
 	char name[NAME_SIZE + 1];
-
-	memset(&sockaddr, 0, sizeof(addr));
-
-	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_addr.s_addr = inet_addr(addr);
-	sockaddr.sin_port = htons(port);
 
 	peer = (struct yell_peer *)malloc(sizeof(struct yell_peer));
 
@@ -505,24 +541,84 @@ int yell_connect(struct yell *self, const char *addr, int port) {
 	if (peer == NULL) {
 		fprintf(self->log, "%s: Memory allocation error.\n", fname);
 
-		return YELL_FAILURE;
+		return NULL;
 	}
 
-	peer->sockaddr = sockaddr;
+	memset(&peer->sockaddr, 0, sizeof(addr));
 
+	peer->sockaddr.sin_family = AF_INET;
+	peer->sockaddr.sin_addr.s_addr = inet_addr(addr);
+	peer->sockaddr.sin_port = htons(port);
+	peer->sockport = port;
+
+	// receive node's name
 	if (yell_topeer(self, peer, YET_WHOAREYOU, NULL, name) == YELL_FAILURE) {
 		fprintf(self->log, "%s: Couldn't message peer.\n", fname);
 
 		free(peer);
 
+		return NULL;
+	}
+
+	// message successful; copy name and push peer
+	strncpy(peer->name, name, NAME_SIZE);
+	peer->name[strlen(name)] = '\0';
+	yell_pushpeer(self, peer);
+
+	return peer;
+}
+
+int yell_connect(struct yell *self, const char *addr, int port) {
+	const char *fname = "yell_connect";
+
+	struct yell_peer *peer;
+	char peers[PACKET_SIZE + 1],
+	     addrstr[INET_ADDRSTRLEN];
+	int i, j,
+	    sockport;
+
+	// get the first peer
+	peer = yell_addpeer(self, addr, port);
+
+	// receive information about other peers
+	if (yell_topeer(self, peer, YET_CONNECT, NULL, peers) == YELL_FAILURE) {
+		fprintf(self->log, "%s: Couldn't message peer.\n", fname);
+
 		return YELL_FAILURE;
 	}
 
-	// message successful; copy name
-	strncpy(peer->name, name, NAME_SIZE);
-	peer->name[strlen(name)] = '\0';
+	// add other peers
+	for (i = 0; peers[i] != '\0';) {
+		// get address
+		for (j = 0; peers[i] != ':' && peers[i] != '\0'; ++i, ++j)
+			addrstr[j] = peers[i];
 
-	yell_pushpeer(self, peer);
+		addrstr[j] = '\0';
+
+		if (peers[i] == '\0')
+			break;
+
+		// get port
+		if (sscanf(peers + i + 1, "%d", &sockport) <= 0) {
+			while (peers[i] != ';' && peers[i] != '\0')
+				++i;
+
+			continue;
+		}
+
+		printf("%s:%d\n", addrstr, sockport);
+
+		yell_addpeer(self, addrstr, sockport);
+
+		// go to the end of this entry
+		while (peers[i] != ';' && peers[i] != '\0')
+			++i;
+
+		if (peers[i] == '\0')
+			break;
+
+		++i;
+	}
 
 	return YELL_SUCCESS;
 }
